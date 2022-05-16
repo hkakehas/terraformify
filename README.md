@@ -29,7 +29,7 @@ terraformify service <service-id>
 
 ## How it works
 
-terraformify runs terraform commands behind the scenes and hendle the tedious Terraform migration tasks.
+terraformify runs terraform commands behind the scenes and hendle the tedious Terraform migration tasks generally in the following order.
 
 1. Run terraform import on the Fastly service ID given in the command
 2. Run terraform show to get an overall picture of the service

@@ -41,6 +41,11 @@ var serviceCmd = &cobra.Command{
 			log.Fatal(err)
 		}
 
+		err = os.Setenv("FASTLY_API_KEY", apiKey)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		version, err := cmd.Flags().GetInt("version")
 		if err != nil {
 			return err
