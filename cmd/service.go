@@ -13,8 +13,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-var version = "0.1.0"
-
 // serviceCmd represents the service command
 var serviceCmd = &cobra.Command{
 	Use:          "service <service-id>",
@@ -167,6 +165,12 @@ func importService(c tmfy.Config) error {
 		return err
 	}
 
+	log.Print("[INFO] Fetching VCL and log formats via Fastly API")
+	err = tmfy.FetchAssetsViaFastlyAPI(props, c)
+	if err != nil {
+		return err
+	}
+
 	// Get the config represented in HCL from the "terraform show" output
 	log.Print(`[INFO] Running "terraform show" to get the current Terraform state in HCL format`)
 	rawHCL, err = tf.ShowPlanFileRaw(context.Background(), "terraform.tfstate")
@@ -174,7 +178,7 @@ func importService(c tmfy.Config) error {
 	// Make changes to the configuration
 	// log.Print("[INFO] Parsing the HCL and making corrections removing read-only attrs and replacing embedded VCL/logformat with the file function")
 	log.Print("[INFO] Parsing the HCL and making corrections")
-	result, err := tmfy.RewriteResources(rawHCL, serviceProp)
+	result, err := tmfy.RewriteResources(rawHCL, serviceProp, props)
 	if err != nil {
 		return err
 	}
@@ -185,12 +189,6 @@ func importService(c tmfy.Config) error {
 	defer f.Close()
 
 	f.Write(result)
-
-	log.Print("[INFO] Fetching VCL and log formats via Fastly API")
-	err = tmfy.FetchAssetsViaFastlyAPI(props, c)
-	if err != nil {
-		return err
-	}
 
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, tmfy.BoldGreen("Completed!"))

@@ -10,6 +10,22 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+func parseHCL(rawHCL string) (*hclwrite.File, error) {
+	// "%" in log format conflicts with the HCL syntax.
+	// To make hclwrite.ParseConfig() work, it must be escaped with an extra "%"
+	rawHCL = strings.ReplaceAll(rawHCL, "%{", "%%{")
+	// Terraform masks values marked as sensitive with `(sensitive value)`, which causes parser errors.
+	// Making them quoted string literals to workaround the errors.
+	rawHCL = strings.ReplaceAll(rawHCL, "(sensitive value)", `"(sensitive value)"`)
+
+	f, diags := hclwrite.ParseConfig([]byte(rawHCL), "", hcl.Pos{Line: 1, Column: 1})
+	if diags.HasErrors() {
+		return nil, fmt.Errorf("errors: %s", diags)
+	}
+
+	return f, nil
+}
+
 func ParseVCLServiceResource(serviceProp *VCLServiceResourceProp, rawHCL string) ([]TFBlockProp, error) {
 	f, err := parseHCL(rawHCL)
 	if err != nil {
@@ -33,10 +49,10 @@ func ParseVCLServiceResource(serviceProp *VCLServiceResourceProp, rawHCL string)
 	// Collect block properties that require surgical changes.
 	props := make([]TFBlockProp, 0, len(nestedBlocks))
 	for _, block := range nestedBlocks {
-		t := block.Type()
+		blockType := block.Type()
 
-		switch {
-		case t == "acl":
+		switch blockType {
+		case "acl":
 			id, err := getStringAttributeValue(block, "acl_id")
 			if err != nil {
 				return nil, err
@@ -47,7 +63,14 @@ func ParseVCLServiceResource(serviceProp *VCLServiceResourceProp, rawHCL string)
 			}
 			prop := NewACLResourceProp(id, name, serviceProp)
 			props = append(props, prop)
-		case t == "dictionary":
+		case "backend":
+			name, err := getStringAttributeValue(block, "name")
+			if err != nil {
+				return nil, err
+			}
+			prop := NewBackendBlockProp(name, serviceProp)
+			props = append(props, prop)
+		case "dictionary":
 			id, err := getStringAttributeValue(block, "dictionary_id")
 			if err != nil {
 				return nil, err
@@ -58,14 +81,14 @@ func ParseVCLServiceResource(serviceProp *VCLServiceResourceProp, rawHCL string)
 			}
 			prop := NewDictionaryResourceProp(id, name, serviceProp)
 			props = append(props, prop)
-		case t == "waf":
+		case "waf":
 			id, err := getStringAttributeValue(block, "waf_id")
 			if err != nil {
 				return nil, err
 			}
 			prop := NewWAFResourceProp(id, serviceProp)
 			props = append(props, prop)
-		case t == "dynamicsnippet":
+		case "dynamicsnippet":
 			id, err := getStringAttributeValue(block, "snippet_id")
 			if err != nil {
 				return nil, err
@@ -76,37 +99,40 @@ func ParseVCLServiceResource(serviceProp *VCLServiceResourceProp, rawHCL string)
 			}
 			prop := NewDynamicSnippetResourceProp(id, name, serviceProp)
 			props = append(props, prop)
-		case t == "snippet":
+		case "snippet":
 			name, err := getStringAttributeValue(block, "name")
 			if err != nil {
 				return nil, err
 			}
 			prop := NewSnippetBlockProp(name, serviceProp)
 			props = append(props, prop)
-		case t == "vcl":
+		case "vcl":
 			name, err := getStringAttributeValue(block, "name")
 			if err != nil {
 				return nil, err
 			}
 			prop := NewVCLBlockProp(name, serviceProp)
 			props = append(props, prop)
-		case strings.HasPrefix(t, "logging_"):
-			name, err := getStringAttributeValue(block, "name")
-			if err != nil {
-				return nil, err
+		default:
+			if strings.HasPrefix(blockType, "logging_") {
+				name, err := getStringAttributeValue(block, "name")
+				if err != nil {
+					return nil, err
+				}
+				prop := NewLoggingBlockProp(name, blockType, serviceProp)
+				props = append(props, prop)
+				continue
 			}
-			isJSON, err := isJSONEncoded(block, "format")
-			if err != nil {
-				return nil, err
-			}
-			prop := NewLoggingBlockProp(name, t, isJSON, serviceProp)
+			// PlaceholderProps are used to align the indexes of the blocks stored in the slice
+			// between ParseVCLServiceResource and rewriteVCLServiceResource.
+			prop := NewPlaceholderProp(serviceProp)
 			props = append(props, prop)
 		}
 	}
 	return props, nil
 }
 
-func RewriteResources(rawHCL string, serviceProp *VCLServiceResourceProp) ([]byte, error) {
+func RewriteResources(rawHCL string, serviceProp *VCLServiceResourceProp, props []TFBlockProp) ([]byte, error) {
 	f, err := parseHCL(rawHCL)
 	if err != nil {
 		return nil, err
@@ -119,7 +145,7 @@ func RewriteResources(rawHCL string, serviceProp *VCLServiceResourceProp) ([]byt
 		}
 		switch block.Labels()[0] {
 		case "fastly_service_vcl":
-			rewriteVCLServiceResource(block, serviceProp)
+			rewriteVCLServiceResource(block, serviceProp, props)
 			if err != nil {
 				return nil, err
 			}
@@ -148,20 +174,7 @@ func RewriteResources(rawHCL string, serviceProp *VCLServiceResourceProp) ([]byt
 	return f.Bytes(), nil
 }
 
-func parseHCL(rawHCL string) (*hclwrite.File, error) {
-	// "%" in log format conflicts with the HCL syntax.
-	// To make hclwrite.ParseConfig() work, it must be escaped with an extra "%"
-	rawHCL = strings.ReplaceAll(rawHCL, "%{", "%%{")
-
-	f, diags := hclwrite.ParseConfig([]byte(rawHCL), "", hcl.Pos{Line: 1, Column: 1})
-	if diags.HasErrors() {
-		return nil, fmt.Errorf("errors: %s", diags)
-	}
-
-	return f, nil
-}
-
-func rewriteVCLServiceResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp) error {
+func rewriteVCLServiceResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, props []TFBlockProp) error {
 	body := block.Body()
 
 	// Remove read-only attributes
@@ -169,20 +182,41 @@ func rewriteVCLServiceResource(block *hclwrite.Block, serviceProp *VCLServiceRes
 	body.RemoveAttribute("active_version")
 	body.RemoveAttribute("cloned_version")
 
-	for _, block := range body.Blocks() {
-		t := block.Type()
-		nb := block.Body()
+	for i, block := range body.Blocks() {
+		blockType := block.Type()
+		nestedBlock := block.Body()
 
-		switch {
-		case t == "acl":
-			nb.RemoveAttribute("acl_id")
-		case t == "dictionary":
-			nb.RemoveAttribute("dictionary_id")
-		case t == "waf":
-			nb.RemoveAttribute("waf_id")
-		case t == "dynamicsnippet":
-			nb.RemoveAttribute("snippet_id")
-		case t == "snippet":
+		switch blockType {
+		case "acl":
+			nestedBlock.RemoveAttribute("acl_id")
+		case "backend":
+			prop, ok := props[i].(*BackendBlockProp)
+			if !ok {
+				return fmt.Errorf("Expected *BackendBlockProp, got %#v", props[i])
+			}
+
+			cert, ok := prop.SensitiveValues["ssl_client_cert"]
+			if !ok {
+				return fmt.Errorf("Sensitive value not found for the backend, %s", prop.Name)
+			}
+			if cert != "" {
+				nestedBlock.SetAttributeValue("ssl_client_cert", cty.StringVal(cert))
+			}
+
+			key, ok := prop.SensitiveValues["ssl_client_key"]
+			if !ok {
+				return fmt.Errorf("Sensitive value not found for the backend, %s", prop.Name)
+			}
+			if key != "" {
+				nestedBlock.SetAttributeValue("ssl_client_cert", cty.StringVal(key))
+			}
+		case "dictionary":
+			nestedBlock.RemoveAttribute("dictionary_id")
+		case "waf":
+			nestedBlock.RemoveAttribute("waf_id")
+		case "dynamicsnippet":
+			nestedBlock.RemoveAttribute("snippet_id")
+		case "snippet":
 			// replace content value with file()
 			name, err := getStringAttributeValue(block, "name")
 			if err != nil {
@@ -191,8 +225,8 @@ func rewriteVCLServiceResource(block *hclwrite.Block, serviceProp *VCLServiceRes
 			name = normalizeName(name)
 			path := fmt.Sprintf("./vcl/snippet_%s.vcl", name)
 			tokens := getFileFunction(path)
-			nb.SetAttributeRaw("content", tokens)
-		case t == "vcl":
+			nestedBlock.SetAttributeRaw("content", tokens)
+		case "vcl":
 			// replace content value with file()
 			name, err := getStringAttributeValue(block, "name")
 			if err != nil {
@@ -201,25 +235,209 @@ func rewriteVCLServiceResource(block *hclwrite.Block, serviceProp *VCLServiceRes
 			name = normalizeName(name)
 			path := fmt.Sprintf("./vcl/%s.vcl", name)
 			tokens := getFileFunction(path)
-			nb.SetAttributeRaw("content", tokens)
-		case strings.HasPrefix(t, "logging_"):
-			// replace format value with file()
-			name, err := getStringAttributeValue(block, "name")
-			if err != nil {
-				return err
+			nestedBlock.SetAttributeRaw("content", tokens)
+		default:
+			if strings.HasPrefix(blockType, "logging_") {
+				prop, ok := props[i].(*LoggingBlockProp)
+				if !ok {
+					return fmt.Errorf("Expected *LoggingBlockProp, got %#v", props[i])
+				}
+
+				name, err := getStringAttributeValue(block, "name")
+				if err != nil {
+					return err
+				}
+
+				name = normalizeName(name)
+				ext := "txt"
+				if prop.IsJSON {
+					ext = "json"
+				}
+				path := fmt.Sprintf("./logformat/%s.%s", name, ext)
+				tokens := getFileFunction(path)
+				nestedBlock.SetAttributeRaw("format", tokens)
+
+				switch prop.GetEndpointType() {
+				case "logging_bigquery":
+					value, ok := prop.SensitiveValues["bigquery_email"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("email", cty.StringVal(value))
+					value, ok = prop.SensitiveValues["bigquery_secret_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("secret_key", cty.StringVal(value))
+				case "logging_blobstorage":
+					value, ok := prop.SensitiveValues["blobstorage_sas_token"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("sas_token", cty.StringVal(value))
+				case "logging_cloudfiles":
+					value, ok := prop.SensitiveValues["cloudfiles_access_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("access_key", cty.StringVal(value))
+				case "logging_datadog":
+					value, ok := prop.SensitiveValues["datadog_token"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("token", cty.StringVal(value))
+				case "logging_digitalocean":
+					value, ok := prop.SensitiveValues["digitalocean_access_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("access_key", cty.StringVal(value))
+					value, ok = prop.SensitiveValues["digitalocean_secret_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("secret_key", cty.StringVal(value))
+				case "logging_elasticsearch":
+					value, ok := prop.SensitiveValues["elasticsearch_password"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("password", cty.StringVal(value))
+					value, ok = prop.SensitiveValues["elasticsearch_tls_client_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("tls_client_key", cty.StringVal(value))
+				case "logging_ftp":
+					value, ok := prop.SensitiveValues["ftp_password"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("password", cty.StringVal(value))
+				case "logging_gcs":
+					value, ok := prop.SensitiveValues["gcs_secret_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("secret_key", cty.StringVal(value))
+				case "logging_googlepubsub":
+					value, ok := prop.SensitiveValues["pubsub_secret_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("secret_key", cty.StringVal(value))
+				case "logging_heroku":
+					value, ok := prop.SensitiveValues["heroku_token"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("token", cty.StringVal(value))
+				case "logging_honeycomb":
+					value, ok := prop.SensitiveValues["honeycomb_token"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("token", cty.StringVal(value))
+				case "logging_https":
+					value, ok := prop.SensitiveValues["https_tls_client_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("tls_client_key", cty.StringVal(value))
+				case "logging_kafka":
+					value, ok := prop.SensitiveValues["kafka_password"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("password", cty.StringVal(value))
+					value, ok = prop.SensitiveValues["kafka_tls_client_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("tls_client_key", cty.StringVal(value))
+				case "logging_kinesis":
+					value, ok := prop.SensitiveValues["kinesis_access_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("access_key", cty.StringVal(value))
+					value, ok = prop.SensitiveValues["kinesis_secret_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("secret_key", cty.StringVal(value))
+				case "logging_logentries":
+				case "logging_loggly":
+					value, ok := prop.SensitiveValues["loggly_token"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("token", cty.StringVal(value))
+				case "logging_logshuttle":
+					value, ok := prop.SensitiveValues["logshuttle_token"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("token", cty.StringVal(value))
+				case "logging_newrelic":
+					value, ok := prop.SensitiveValues["newrelic_token"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("token", cty.StringVal(value))
+				case "logging_openstack":
+					value, ok := prop.SensitiveValues["openstack_access_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("access_key", cty.StringVal(value))
+				case "logging_papertrail":
+				case "logging_s3":
+					value, ok := prop.SensitiveValues["s3_access_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("s3_access_key", cty.StringVal(value))
+					value, ok = prop.SensitiveValues["s3_secret_key"]
+					nestedBlock.SetAttributeValue("s3_secret_key", cty.StringVal(value))
+				case "logging_scalyr":
+					value, ok := prop.SensitiveValues["scalyr_token"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("token", cty.StringVal(value))
+				case "logging_sftp":
+					value, ok := prop.SensitiveValues["sftp_password"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("password", cty.StringVal(value))
+					value, ok = prop.SensitiveValues["sftp_secret_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("secret_key", cty.StringVal(value))
+				case "logging_splunk":
+					value, ok := prop.SensitiveValues["splunk_tls_client_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("tls_client_key", cty.StringVal(value))
+					value, ok = prop.SensitiveValues["splunk_token"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("token", cty.StringVal(value))
+				case "logging_sumologic":
+				case "logging_syslog":
+					value, ok := prop.SensitiveValues["syslog_tls_client_key"]
+					if !ok {
+						return fmt.Errorf("Sensitive value not found for %s", prop.GetEndpointType())
+					}
+					nestedBlock.SetAttributeValue("tls_client_key", cty.StringVal(value))
+				}
 			}
-			isJSON, err := isJSONEncoded(block, "format")
-			if err != nil {
-				return err
-			}
-			name = normalizeName(name)
-			ext := "txt"
-			if isJSON {
-				ext = "json"
-			}
-			path := fmt.Sprintf("./logformat/%s.%s", name, ext)
-			tokens := getFileFunction(path)
-			nb.SetAttributeRaw("format", tokens)
 		}
 	}
 	return nil

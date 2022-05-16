@@ -64,16 +64,16 @@ func (v *VCLServiceResourceProp) GetRef() string {
 }
 
 type WAFResourceProp struct {
+	*VCLServiceResourceProp
 	ID   string
 	Name string
-	*VCLServiceResourceProp
 }
 
 func NewWAFResourceProp(id string, sr *VCLServiceResourceProp) *WAFResourceProp {
 	return &WAFResourceProp{
+		VCLServiceResourceProp: sr,
 		ID:                     id,
 		Name:                   "waf",
-		VCLServiceResourceProp: sr,
 	}
 }
 func (w *WAFResourceProp) GetType() string {
@@ -96,17 +96,17 @@ func (w *WAFResourceProp) GetRef() string {
 }
 
 type ACLResourceProp struct {
+	*VCLServiceResourceProp
 	ID   string
 	Name string
 	No   int
-	*VCLServiceResourceProp
 }
 
 func NewACLResourceProp(id, name string, sr *VCLServiceResourceProp) *ACLResourceProp {
 	return &ACLResourceProp{
+		VCLServiceResourceProp: sr,
 		ID:                     id,
 		Name:                   name,
-		VCLServiceResourceProp: sr,
 	}
 }
 func (a *ACLResourceProp) GetType() string {
@@ -129,16 +129,16 @@ func (a *ACLResourceProp) GetRef() string {
 }
 
 type DictionaryResourceProp struct {
+	*VCLServiceResourceProp
 	ID   string
 	Name string
-	*VCLServiceResourceProp
 }
 
 func NewDictionaryResourceProp(id, name string, sr *VCLServiceResourceProp) *DictionaryResourceProp {
 	return &DictionaryResourceProp{
+		VCLServiceResourceProp: sr,
 		ID:                     id,
 		Name:                   name,
-		VCLServiceResourceProp: sr,
 	}
 }
 func (d *DictionaryResourceProp) GetType() string {
@@ -161,16 +161,16 @@ func (d *DictionaryResourceProp) GetRef() string {
 }
 
 type DynamicSnippetResourceProp struct {
+	*VCLServiceResourceProp
 	ID   string
 	Name string
-	*VCLServiceResourceProp
 }
 
 func NewDynamicSnippetResourceProp(id, name string, sr *VCLServiceResourceProp) *DynamicSnippetResourceProp {
 	return &DynamicSnippetResourceProp{
+		VCLServiceResourceProp: sr,
 		ID:                     id,
 		Name:                   name,
-		VCLServiceResourceProp: sr,
 	}
 }
 func (ds *DynamicSnippetResourceProp) GetType() string {
@@ -193,14 +193,14 @@ func (ds *DynamicSnippetResourceProp) GetRef() string {
 }
 
 type SnippetBlockProp struct {
-	Name string
 	*VCLServiceResourceProp
+	Name string
 }
 
 func NewSnippetBlockProp(name string, sr *VCLServiceResourceProp) *SnippetBlockProp {
 	return &SnippetBlockProp{
-		Name:                   name,
 		VCLServiceResourceProp: sr,
+		Name:                   name,
 	}
 }
 func (s *SnippetBlockProp) GetType() string {
@@ -214,14 +214,14 @@ func (s *SnippetBlockProp) GetNormalizedName() string {
 }
 
 type VCLBlockProp struct {
-	Name string
 	*VCLServiceResourceProp
+	Name string
 }
 
 func NewVCLBlockProp(name string, sr *VCLServiceResourceProp) *VCLBlockProp {
 	return &VCLBlockProp{
-		Name:                   name,
 		VCLServiceResourceProp: sr,
+		Name:                   name,
 	}
 }
 func (v *VCLBlockProp) GetType() string {
@@ -235,18 +235,20 @@ func (v *VCLBlockProp) GetNormalizedName() string {
 }
 
 type LoggingBlockProp struct {
+	*VCLServiceResourceProp
 	Name         string
 	EndpointType string
 	IsJSON       bool
-	*VCLServiceResourceProp
+	SensitiveValues map[string]string
 }
 
-func NewLoggingBlockProp(name, endpointType string, isJSON bool, sr *VCLServiceResourceProp) *LoggingBlockProp {
+func NewLoggingBlockProp(name, endpointType string, sr *VCLServiceResourceProp) *LoggingBlockProp {
 	return &LoggingBlockProp{
+		VCLServiceResourceProp: sr,
 		EndpointType:           endpointType,
 		Name:                   name,
-		IsJSON:                 isJSON,
-		VCLServiceResourceProp: sr,
+		IsJSON:                 false,
+		SensitiveValues: map[string]string{},
 	}
 }
 func (l *LoggingBlockProp) GetEndpointType() string {
@@ -257,6 +259,31 @@ func (l *LoggingBlockProp) GetName() string {
 }
 func (l *LoggingBlockProp) GetNormalizedName() string {
 	return normalizeName(l.GetName())
+}
+
+type BackendBlockProp struct {
+	*VCLServiceResourceProp
+	Name         string
+	SensitiveValues map[string]string
+}
+func NewBackendBlockProp(name string, sr *VCLServiceResourceProp) *BackendBlockProp {
+	return &BackendBlockProp{
+		VCLServiceResourceProp: sr,
+		Name: name,
+		SensitiveValues: map[string]string{},
+	}
+}
+func (b *BackendBlockProp) GetName() string {
+	return b.Name
+}
+
+type PlaceholderProp struct {
+	*VCLServiceResourceProp
+}
+func NewPlaceholderProp(sr *VCLServiceResourceProp) *PlaceholderProp {
+	return &PlaceholderProp{
+		VCLServiceResourceProp: sr,
+	}
 }
 
 func normalizeName(name string) string {
