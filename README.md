@@ -1,6 +1,6 @@
 # terraformify
 
-A CLI for migrating existing Fastly resources to Terraform.
+An experimental CLI for migrating existing Fastly resources to Terraform.
 
 ![terraformify_demo](https://user-images.githubusercontent.com/30490956/168525136-e23ba260-8aa2-4ff3-a362-963f332b0a94.gif)
 
