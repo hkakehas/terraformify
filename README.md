@@ -15,8 +15,8 @@ go install github.com/hrmsk66/terraformify@latest
 terraformify requires read permissions to the target Fastly resource.
 Choose one of the following options to give terraformify access to your API token:
 
-- Include the token explicitly on each command you run using the --api-key or -k flags.
-- Set a FASTLY_API_KEY environment variable.
+- Include the token explicitly on each command you run using the `--api-key` or `-k` flags.
+- Set a `FASTLY_API_KEY` environment variable.
 
 ## Usage
 
