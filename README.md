@@ -2,7 +2,7 @@
 
 An experimental CLI for managing existing Fastly resources with Terraform
 
-![terraformify_demo](https://user-images.githubusercontent.com/30490956/168525136-e23ba260-8aa2-4ff3-a362-963f332b0a94.gif)
+https://user-images.githubusercontent.com/30490956/169726673-33ecccf7-ae40-4ebd-acf7-e4d457d4f510.mp4
 
 ## Installation
 
