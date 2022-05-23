@@ -1,6 +1,7 @@
 package terraformify
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -8,7 +9,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fastly/go-fastly/v6/fastly"
 	"github.com/fatih/color"
 	"github.com/hashicorp/logutils"
 )
@@ -18,11 +18,12 @@ type Config struct {
 	Version     int
 	Directory   string
 	Interactive bool
-	Client      *fastly.Client
+	ManageAll bool
 }
 
 var Bold = color.New(color.Bold).SprintFunc()
 var BoldGreen = color.New(color.Bold, color.FgGreen).SprintFunc()
+var BoldYellow = color.New(color.Bold, color.FgYellow).SprintFunc()
 
 func CreateLogFilter() io.Writer {
 	minLevel := os.Getenv("TMFY_LOG")
@@ -60,20 +61,23 @@ func CheckDirEmpty(path string) error {
 	return errors.New("Working directory is not empty")
 }
 
-func YesNo(message string) (bool, error) {
-	var s string
+func YesNo(message string) bool {
+		reader := bufio.NewReader(os.Stdin)
 
-	fmt.Printf("%s (y/N): ", message)
-	_, err := fmt.Scan(&s)
-	if err != nil {
-		return false, err
+	for {
+		fmt.Printf("%s [y/n]: ", message)
+
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		response = strings.ToLower(strings.TrimSpace(response))
+
+		if response == "y" || response == "yes" {
+			return true
+		} else if response == "n" || response == "no" {
+			return false
+		}
 	}
-
-	s = strings.TrimSpace(s)
-	s = strings.ToLower(s)
-
-	if s == "y" || s == "yes" {
-		return true, nil
-	}
-	return false, nil
 }

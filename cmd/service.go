@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fastly/go-fastly/v6/fastly"
 	tmfy "github.com/hrmsk66/terraformify/lib"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -34,11 +33,6 @@ var serviceCmd = &cobra.Command{
 		}
 
 		apiKey := viper.GetString("api-key")
-		client, err := fastly.NewClient(apiKey)
-		if err != nil {
-			log.Fatal(err)
-		}
-
 		err = os.Setenv("FASTLY_API_KEY", apiKey)
 		if err != nil {
 			log.Fatal(err)
@@ -52,13 +46,17 @@ var serviceCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		manageAll, err := cmd.Flags().GetBool("manage-all")
+		if err != nil {
+			return err
+		}
 
 		c := tmfy.Config{
 			ID:          args[0],
 			Version:     version,
 			Directory:   workingDir,
 			Interactive: interactive,
-			Client:      client,
+			ManageAll: manageAll,
 		}
 
 		return importService(c)
@@ -70,26 +68,10 @@ func init() {
 
 	// Persistent flags
 	serviceCmd.PersistentFlags().IntP("version", "v", 0, "Version of the service to be imported")
+	serviceCmd.PersistentFlags().BoolP("manage-all", "m", false, "Manage all associated resources (Set manage_* attributes for ACL entries, dictionary items, and dynamic snippet)")
 }
 
 func importService(c tmfy.Config) error {
-	// Get the service details via Fastly API
-	log.Printf("[INFO] Getting service %s details via Fastly API", c.ID)
-	serviceDetail, err := c.Client.GetServiceDetails(&fastly.GetServiceInput{
-		ID: c.ID,
-	})
-	if err != nil {
-		return err
-	}
-
-	// By default, active version is imported;
-	// if there is no active version, the latest version is imported
-	// unless a specific target version is given in the command argument.
-	version := serviceDetail.ActiveVersion.Number
-	if !serviceDetail.ActiveVersion.Active {
-		version = serviceDetail.Version.Number
-	}
-
 	log.Printf("[INFO] Initializing Terraform")
 	// Find/Install Terraform binary
 	tf, err := tmfy.TerraformInstall(c.Directory)
@@ -113,8 +95,14 @@ func importService(c tmfy.Config) error {
 		return err
 	}
 
+	// Run "terraform version"
+	err = tmfy.TerraformVersion(tf)
+	if err != nil {
+		return err
+	}
+
 	// Create VCLServiceResourceProp struct
-	serviceProp := tmfy.NewVCLServiceResourceProp(c.ID, serviceDetail.Name, version, c.Version)
+	serviceProp := tmfy.NewVCLServiceResourceProp(c.ID, "service", c.Version)
 
 	// log.Printf(`[INFO] Running "terraform import %s %s"`, serviceProp.GetRef(), serviceProp.GetIDforTFImport())
 	log.Printf(`[INFO] Running "terraform imoprt" on %s`, serviceProp.GetRef())
@@ -131,7 +119,12 @@ func importService(c tmfy.Config) error {
 	// to get the overall picture of the service configuration
 	// log.Print("[INFO] Parsing the HCL to get an overall picture of the service configuration")
 	log.Print("[INFO] Parsing the HCL")
-	props, err := tmfy.ParseVCLServiceResource(serviceProp, rawHCL)
+	tfconf, err := tmfy.LoadTFConf(rawHCL)
+	if err != nil {
+		return err
+	}
+
+	props, err := tfconf.ParseVCLServiceResource(serviceProp, c)
 	if err != nil {
 		return err
 	}
@@ -142,10 +135,7 @@ func importService(c tmfy.Config) error {
 		case *tmfy.WAFResourceProp, *tmfy.ACLResourceProp, *tmfy.DictionaryResourceProp, *tmfy.DynamicSnippetResourceProp:
 			// Ask yes/no if in interactive mode
 			if c.Interactive {
-				yes, err := tmfy.YesNo(fmt.Sprintf("import %s? ", r.GetRef()))
-				if err != nil {
-					return err
-				}
+				yes := tmfy.YesNo(fmt.Sprintf("import %s? ", r.GetRef()))
 				if !yes {
 					continue
 				}
@@ -164,10 +154,7 @@ func importService(c tmfy.Config) error {
 	if err := tempf.Close(); err != nil {
 		return err
 	}
-
-	log.Print("[INFO] Fetching VCL and log formats via Fastly API")
-	err = tmfy.FetchAssetsViaFastlyAPI(props, c)
-	if err != nil {
+	if err := os.Remove(tempf.Name()); err != nil {
 		return err
 	}
 
@@ -178,7 +165,12 @@ func importService(c tmfy.Config) error {
 	// Make changes to the configuration
 	// log.Print("[INFO] Parsing the HCL and making corrections removing read-only attrs and replacing embedded VCL/logformat with the file function")
 	log.Print("[INFO] Parsing the HCL and making corrections")
-	result, err := tmfy.RewriteResources(rawHCL, serviceProp, props)
+	tfconf, err = tmfy.LoadTFConf(rawHCL)
+	if err != nil {
+		return err
+	}
+
+	result, err := tfconf.RewriteResources(serviceProp, c)
 	if err != nil {
 		return err
 	}
@@ -187,10 +179,37 @@ func importService(c tmfy.Config) error {
 	path := filepath.Join(c.Directory, "main.tf")
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	defer f.Close()
-
 	f.Write(result)
 
-	fmt.Fprintln(os.Stderr)
+	log.Print(`[INFO] Fixing "activate" attributes in terraform.tfstate`)
+	curState, err := tmfy.LoadTFState(c.Directory)
+	if err != nil {
+		return err
+	}
+	newState, err := curState.SetActivateAttr()
+	if err != nil {
+		return err
+	}
+
+	if c.ManageAll {
+		log.Print(`[INFO] Settting manage_* attributes`)
+		newState, err = newState.SetManageAttrs()
+		if err != nil {
+			return err
+		}
+	}
+
+	path = filepath.Join(c.Directory, "terraform.tfstate")
+	f, err = os.OpenFile(path, os.O_RDWR|os.O_TRUNC, 0644)
+	f.Write(newState.Bytes())
+	f.Close()
+
+	log.Print(`[INFO] Running "terraform refresh" to format the state file and check errors`)
+	err = tmfy.TerraformRefresh(tf)
+	if err != nil {
+		return err
+	}
+
 	fmt.Fprintln(os.Stderr, tmfy.BoldGreen("Completed!"))
 	return nil
 }

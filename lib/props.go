@@ -17,15 +17,13 @@ type TFBlockProp interface {
 type VCLServiceResourceProp struct {
 	ID            string
 	Name          string
-	Version       int
 	TargetVersion int
 }
 
-func NewVCLServiceResourceProp(id, name string, version, targetversion int) *VCLServiceResourceProp {
+func NewVCLServiceResourceProp(id, name string, targetversion int) *VCLServiceResourceProp {
 	return &VCLServiceResourceProp{
 		ID:            id,
 		Name:          name,
-		Version:       version,
 		TargetVersion: targetversion,
 	}
 }
@@ -37,15 +35,9 @@ func (v *VCLServiceResourceProp) GetID() string {
 }
 func (v *VCLServiceResourceProp) GetIDforTFImport() string {
 	if v.TargetVersion != 0 {
-		return v.GetID() + "@" + strconv.Itoa(v.GetVersion())
+		return v.GetID() + "@" + strconv.Itoa(v.TargetVersion)
 	}
 	return v.GetID()
-}
-func (v *VCLServiceResourceProp) GetVersion() int {
-	if v.TargetVersion != 0 {
-		return v.TargetVersion
-	}
-	return v.Version
 }
 func (v *VCLServiceResourceProp) GetName() string {
 	return v.Name
@@ -53,7 +45,7 @@ func (v *VCLServiceResourceProp) GetName() string {
 func (v *VCLServiceResourceProp) GetNormalizedName() string {
 	// Check if the name can be used as a Terraform resource name
 	// If not, falling back to the default resource name
-	name := normalizeName(v.GetName())
+	name := normalize(v.GetName())
 	if !isValidResourceName(name) {
 		name = "service"
 	}
@@ -89,7 +81,7 @@ func (w *WAFResourceProp) GetName() string {
 	return w.Name
 }
 func (w *WAFResourceProp) GetNormalizedName() string {
-	return normalizeName(w.GetName())
+	return normalize(w.GetName())
 }
 func (w *WAFResourceProp) GetRef() string {
 	return w.GetType() + "." + w.GetNormalizedName()
@@ -122,7 +114,7 @@ func (a *ACLResourceProp) GetName() string {
 	return a.Name
 }
 func (a *ACLResourceProp) GetNormalizedName() string {
-	return normalizeName(a.Name)
+	return normalize(a.Name)
 }
 func (a *ACLResourceProp) GetRef() string {
 	return a.GetType() + "." + a.GetNormalizedName()
@@ -154,7 +146,7 @@ func (d *DictionaryResourceProp) GetName() string {
 	return d.Name
 }
 func (d *DictionaryResourceProp) GetNormalizedName() string {
-	return normalizeName(d.GetName())
+	return normalize(d.GetName())
 }
 func (d *DictionaryResourceProp) GetRef() string {
 	return d.GetType() + "." + d.GetNormalizedName()
@@ -186,107 +178,13 @@ func (ds *DynamicSnippetResourceProp) GetName() string {
 	return ds.Name
 }
 func (ds *DynamicSnippetResourceProp) GetNormalizedName() string {
-	return normalizeName(ds.GetName())
+	return normalize(ds.GetName())
 }
 func (ds *DynamicSnippetResourceProp) GetRef() string {
 	return ds.GetType() + "." + ds.GetNormalizedName()
 }
 
-type SnippetBlockProp struct {
-	*VCLServiceResourceProp
-	Name string
-}
-
-func NewSnippetBlockProp(name string, sr *VCLServiceResourceProp) *SnippetBlockProp {
-	return &SnippetBlockProp{
-		VCLServiceResourceProp: sr,
-		Name:                   name,
-	}
-}
-func (s *SnippetBlockProp) GetType() string {
-	return "snippet"
-}
-func (s *SnippetBlockProp) GetName() string {
-	return s.Name
-}
-func (s *SnippetBlockProp) GetNormalizedName() string {
-	return normalizeName(s.GetName())
-}
-
-type VCLBlockProp struct {
-	*VCLServiceResourceProp
-	Name string
-}
-
-func NewVCLBlockProp(name string, sr *VCLServiceResourceProp) *VCLBlockProp {
-	return &VCLBlockProp{
-		VCLServiceResourceProp: sr,
-		Name:                   name,
-	}
-}
-func (v *VCLBlockProp) GetType() string {
-	return "vcl"
-}
-func (v *VCLBlockProp) GetName() string {
-	return v.Name
-}
-func (v *VCLBlockProp) GetNormalizedName() string {
-	return normalizeName(v.GetName())
-}
-
-type LoggingBlockProp struct {
-	*VCLServiceResourceProp
-	Name         string
-	EndpointType string
-	IsJSON       bool
-	SensitiveValues map[string]string
-}
-
-func NewLoggingBlockProp(name, endpointType string, sr *VCLServiceResourceProp) *LoggingBlockProp {
-	return &LoggingBlockProp{
-		VCLServiceResourceProp: sr,
-		EndpointType:           endpointType,
-		Name:                   name,
-		IsJSON:                 false,
-		SensitiveValues: map[string]string{},
-	}
-}
-func (l *LoggingBlockProp) GetEndpointType() string {
-	return l.EndpointType
-}
-func (l *LoggingBlockProp) GetName() string {
-	return l.Name
-}
-func (l *LoggingBlockProp) GetNormalizedName() string {
-	return normalizeName(l.GetName())
-}
-
-type BackendBlockProp struct {
-	*VCLServiceResourceProp
-	Name         string
-	SensitiveValues map[string]string
-}
-func NewBackendBlockProp(name string, sr *VCLServiceResourceProp) *BackendBlockProp {
-	return &BackendBlockProp{
-		VCLServiceResourceProp: sr,
-		Name: name,
-		SensitiveValues: map[string]string{},
-	}
-}
-func (b *BackendBlockProp) GetName() string {
-	return b.Name
-}
-
-type PlaceholderProp struct {
-	*VCLServiceResourceProp
-}
-func NewPlaceholderProp(sr *VCLServiceResourceProp) *PlaceholderProp {
-	return &PlaceholderProp{
-		VCLServiceResourceProp: sr,
-	}
-}
-
-func normalizeName(name string) string {
+func normalize(name string) string {
 	name = strings.ToLower(name)
 	name = strings.ReplaceAll(name, ".", "_")
 	name = strings.ReplaceAll(name, "\n", "_")
