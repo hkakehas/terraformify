@@ -15,7 +15,7 @@ import (
 // serviceCmd represents the service command
 var serviceCmd = &cobra.Command{
 	Use:          "service <service-id>",
-	Short:        "Migrating an existing Fastly service",
+	Short:        "Generate TF files for an existing Fastly service",
 	Args:         cobra.ExactArgs(1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -68,7 +68,7 @@ func init() {
 
 	// Persistent flags
 	serviceCmd.PersistentFlags().IntP("version", "v", 0, "Version of the service to be imported")
-	serviceCmd.PersistentFlags().BoolP("manage-all", "m", false, "Manage all associated resources (Set manage_* attributes for ACL entries, dictionary items, and dynamic snippet)")
+	serviceCmd.PersistentFlags().BoolP("manage-all", "m", false, "Manage all associated resources")
 }
 
 func importService(c tmfy.Config) error {
@@ -210,6 +210,7 @@ func importService(c tmfy.Config) error {
 		return err
 	}
 
+	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, tmfy.BoldGreen("Completed!"))
 	return nil
 }

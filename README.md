@@ -1,6 +1,6 @@
 # terraformify
 
-An experimental CLI for managing existing Fastly resources with Terraform
+An experimental CLI that generates TF files to manage existing Fastly services with Terraform
 
 https://user-images.githubusercontent.com/30490956/169726673-33ecccf7-ae40-4ebd-acf7-e4d457d4f510.mp4
 
@@ -31,26 +31,10 @@ terraformify service <service-id>
 
 ### Interactive mode
 
-By default, terraformify imports all resources associated with the service, such as ACL entries, dictionary items, WAF..etc. Use the `-i` flag to select which resources to import.
+By default, terraformify imports all resources associated with the service, such as ACL entries, dictionary items, WAF..etc. To interactively select which resources to import, use the `-i` flag.
 
 ```
 terraformify service <service-id> -i
-```
-
-### Manage associated resources
-
-By default, the `manage_*` attributes are not set so these resources can be managed externally.
-
-| Resource Name                          | Attribute Name      |
-| -------------------------------------- | ------------------- |
-| fastly_service_acl_entries             | [manage_entries]()  |
-| fastly_service_dictionary_items        | [manage_items]()    |
-| fastly_service_dynamic_snippet_content | [manage_snippets]() |
-
-To set attributes to true and manage the resource with Terraform, use the `-m` flag.
-
-```
-terraformify service <service-id> -m
 ```
 
 ### Import specific version
@@ -59,4 +43,20 @@ By default, either the active version will be imported, or the latest version if
 
 ```
 terraformify service <service-id> -v 9
+```
+
+### Manage associated resources
+
+By default, the `manage_*` attribute is not set so that these resources can be managed externally.
+
+| Resource Name                          | Attribute Name                                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| fastly_service_acl_entries             | [manage_entries](https://registry.terraform.io/providers/fastly/fastly/latest/docs/resources/service_acl_entries)              |
+| fastly_service_dictionary_items        | [manage_items](https://registry.terraform.io/providers/fastly/fastly/latest/docs/resources/service_dictionary_items)           |
+| fastly_service_dynamic_snippet_content | [manage_snippets](https://registry.terraform.io/providers/fastly/fastly/latest/docs/resources/service_dynamic_snippet_content) |
+
+To set the attributes to true and manage the resource with Terraform, use the `-m` flag.
+
+```
+terraformify service <service-id> -m
 ```

@@ -10,12 +10,12 @@ import (
 )
 
 var cfgFile string
-var version = "0.1.4"
+var version = "0.1.5"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "terraformify",
-	Short: "A CLI for migrating existing Fastly resources to Terraform",
+	Short: "A CLI that generates TF files to manage existing Fastly services with Terraform",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
