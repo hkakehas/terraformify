@@ -137,12 +137,12 @@ func (tfconf *TFConf) RewriteResources(serviceProp *VCLServiceResourceProp, c Co
 				return nil, err
 			}
 		case "fastly_service_dictionary_items":
-			err := rewriteDictionaryResource(block, serviceProp, c)
+			err := rewriteDictionaryResource(block, serviceProp, tfstate, c)
 			if err != nil {
 				return nil, err
 			}
 		case "fastly_service_acl_entries":
-			err := rewriteACLResource(block, serviceProp, c)
+			err := rewriteACLResource(block, serviceProp, tfstate, c)
 			if err != nil {
 				return nil, err
 			}
@@ -412,8 +412,36 @@ func rewriteVCLServiceResource(block *hclwrite.Block, serviceProp *VCLServiceRes
 	return nil
 }
 
-func rewriteACLResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, c Config) error {
+func rewriteACLResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
 	body := block.Body()
+
+	if c.ReplaceID {
+		id, err := getStringAttributeValue(block, "acl_id")
+		if err != nil {
+			return err
+		}
+
+		tfstate, err := s.addResourceQueryTemplate(resourceNameQueryTmpl)
+		if err != nil {
+			return err
+		}
+
+		name, err := tfstate.Query(ResourceQueryParams{
+			AttributeType: "acl",
+			IDName:        "acl_id",
+			ID:            id,
+		})
+		if err != nil {
+			return err
+		}
+
+		tokens := buildForEach("acl", name.String())
+		body.SetAttributeRaw("for_each", tokens)
+
+		resourceIDRef := buildForEachIDRef("acl_id")
+		body.SetAttributeTraversal("acl_id", resourceIDRef)
+	}
+
 	// remove read-only attributes
 	body.RemoveAttribute("id")
 
@@ -439,19 +467,47 @@ func rewriteACLResource(block *hclwrite.Block, serviceProp *VCLServiceResourcePr
 	return nil
 }
 
-func rewriteDictionaryResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, c Config) error {
+func rewriteDictionaryResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
 	body := block.Body()
+
+	if c.ReplaceID {
+		id, err := getStringAttributeValue(block, "dictionary_id")
+		if err != nil {
+			return err
+		}
+
+		tfstate, err := s.addResourceQueryTemplate(resourceNameQueryTmpl)
+		if err != nil {
+			return err
+		}
+
+		name, err := tfstate.Query(ResourceQueryParams{
+			AttributeType: "dictionary",
+			IDName:        "dictionary_id",
+			ID:            id,
+		})
+		if err != nil {
+			return err
+		}
+
+		tokens := buildForEach("dictionary", name.String())
+		body.SetAttributeRaw("for_each", tokens)
+
+		resourceIDRef := buildForEachIDRef("dictionary_id")
+		body.SetAttributeTraversal("dictionary_id", resourceIDRef)
+	}
+
 	// remove read-only attributes
 	body.RemoveAttribute("id")
+
+	// set service_id to represent the resource dependency
+	ref := buildServiceIDRef(serviceProp)
+	body.SetAttributeTraversal("service_id", ref)
 
 	if c.ManageAll {
 		// set manage_items to true
 		body.SetAttributeValue("manage_items", cty.BoolVal(true))
 	}
-
-	// set service_id to represent the resource dependency
-	ref := buildServiceIDRef(serviceProp)
-	body.SetAttributeTraversal("service_id", ref)
 
 	return nil
 }
@@ -477,12 +533,35 @@ func rewriteWAFResource(block *hclwrite.Block, serviceProp *VCLServiceResourcePr
 }
 
 func rewriteDynamicSnippetResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
-	tfstate, err := s.addQueryTemplate(dsnippetQueryTmpl)
-	if err != nil {
-		return err
+	body := block.Body()
+
+	if c.ReplaceID {
+		id, err := getStringAttributeValue(block, "snippet_id")
+		if err != nil {
+			return err
+		}
+
+		tfstate, err := s.addResourceQueryTemplate(resourceNameQueryTmpl)
+		if err != nil {
+			return err
+		}
+
+		name, err := tfstate.Query(ResourceQueryParams{
+			AttributeType: "dynamicsnippet",
+			IDName:        "snippet_id",
+			ID:            id,
+		})
+		if err != nil {
+			return err
+		}
+
+		tokens := buildForEach("dynamicsnippet", name.String())
+		body.SetAttributeRaw("for_each", tokens)
+
+		resourceIDRef := buildForEachIDRef("snippet_id")
+		body.SetAttributeTraversal("snippet_id", resourceIDRef)
 	}
 
-	body := block.Body()
 	// remove read-only attributes
 	body.RemoveAttribute("id")
 
@@ -499,6 +578,11 @@ func rewriteDynamicSnippetResource(block *hclwrite.Block, serviceProp *VCLServic
 	name := block.Labels()[1]
 
 	// Get content from TFState
+	tfstate, err := s.addQueryTemplate(dsnippetQueryTmpl)
+	if err != nil {
+		return err
+	}
+
 	v, err := tfstate.Query(QueryParams{
 		ResourceName: name,
 	})
@@ -531,11 +615,50 @@ func buildFileFunction(path string) hclwrite.Tokens {
 	}
 }
 
+func buildForEach(resourceType, name string) hclwrite.Tokens {
+	return hclwrite.Tokens{
+		{Type: hclsyntax.TokenOBrace, Bytes: []byte{'{'}, SpacesBefore: 1},
+		{Type: hclsyntax.TokenNewline, Bytes: []byte("\n"), SpacesBefore: 0},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("for"), SpacesBefore: 2},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("d"), SpacesBefore: 1},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("in"), SpacesBefore: 1},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("fastly_service_vcl"), SpacesBefore: 1},
+		{Type: hclsyntax.TokenDot, Bytes: []byte{'.'}, SpacesBefore: 0},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("service"), SpacesBefore: 0},
+		{Type: hclsyntax.TokenDot, Bytes: []byte{'.'}, SpacesBefore: 0},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte(resourceType), SpacesBefore: 0},
+		{Type: hclsyntax.TokenColon, Bytes: []byte{':'}, SpacesBefore: 1},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("d"), SpacesBefore: 1},
+		{Type: hclsyntax.TokenDot, Bytes: []byte{'.'}, SpacesBefore: 0},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("name"), SpacesBefore: 0},
+		{Type: hclsyntax.TokenFatArrow, Bytes: []byte("=>"), SpacesBefore: 1},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("d"), SpacesBefore: 1},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("if"), SpacesBefore: 1},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("d"), SpacesBefore: 1},
+		{Type: hclsyntax.TokenDot, Bytes: []byte{'.'}, SpacesBefore: 0},
+		{Type: hclsyntax.TokenIdent, Bytes: []byte("name"), SpacesBefore: 0},
+		{Type: hclsyntax.TokenEqualOp, Bytes: []byte("=="), SpacesBefore: 1},
+		{Type: hclsyntax.TokenOQuote, Bytes: []byte{'"'}, SpacesBefore: 1},
+		{Type: hclsyntax.TokenQuotedLit, Bytes: []byte(name), SpacesBefore: 0},
+		{Type: hclsyntax.TokenCQuote, Bytes: []byte{'"'}, SpacesBefore: 0},
+		{Type: hclsyntax.TokenNewline, Bytes: []byte("\n"), SpacesBefore: 0},
+		{Type: hclsyntax.TokenCBrace, Bytes: []byte{'}'}, SpacesBefore: 2},
+	}
+}
+
 func buildServiceIDRef(serviceProp *VCLServiceResourceProp) hcl.Traversal {
 	return hcl.Traversal{
 		hcl.TraverseRoot{Name: serviceProp.GetType()},
 		hcl.TraverseAttr{Name: serviceProp.GetNormalizedName()},
 		hcl.TraverseAttr{Name: "id"},
+	}
+}
+
+func buildForEachIDRef(idName string) hcl.Traversal {
+	return hcl.Traversal{
+		hcl.TraverseRoot{Name: "each"},
+		hcl.TraverseAttr{Name: "value"},
+		hcl.TraverseAttr{Name: idName},
 	}
 }
 

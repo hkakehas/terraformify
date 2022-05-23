@@ -19,6 +19,7 @@ type Config struct {
 	Directory   string
 	Interactive bool
 	ManageAll bool
+	ReplaceID bool
 }
 
 var Bold = color.New(color.Bold).SprintFunc()

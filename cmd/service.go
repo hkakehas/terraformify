@@ -50,13 +50,17 @@ var serviceCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
+		replaceID, err := cmd.Flags().GetBool("replace-id")
+		if err != nil {
+			return err
+		}
 		c := tmfy.Config{
 			ID:          args[0],
 			Version:     version,
 			Directory:   workingDir,
 			Interactive: interactive,
 			ManageAll: manageAll,
+			ReplaceID: replaceID,
 		}
 
 		return importService(c)
@@ -69,6 +73,7 @@ func init() {
 	// Persistent flags
 	serviceCmd.PersistentFlags().IntP("version", "v", 0, "Version of the service to be imported")
 	serviceCmd.PersistentFlags().BoolP("manage-all", "m", false, "Manage all associated resources")
+	serviceCmd.PersistentFlags().BoolP("replace-id", "r", false, "Replace dictionary_id, acl_id and snippet_id with for_each (Note: the resources will be destroyed and recreated)")
 }
 
 func importService(c tmfy.Config) error {

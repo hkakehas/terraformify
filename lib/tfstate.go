@@ -19,12 +19,32 @@ type QueryParams struct {
 	Query         string
 }
 
+type ResourceQueryParams struct {
+	AttributeType string
+	IDName string
+	ID string
+}
+
 const serviceQueryTmpl =   `.resources[] | select(.name == "{{.ResourceName}}") | .instances[].attributes.{{.AttributeType}}[] | select(.name == "{{.Name}}") | .{{.Query}}`
 const dsnippetQueryTmpl = `.resources[] | select(.name == "{{.ResourceName}}") | .instances[].attributes.content`
+const resourceNameQueryTmpl = `.resources[] | select(.type == "fastly_service_vcl") | .instances[].attributes.{{.AttributeType}}[] | select(.{{.IDName}} == "{{.ID}}") | .name`
 const setActivateQuery =   `(.resources[] | select(.type == "fastly_service_vcl" or .type == "fastly_service_waf_configuration") | .instances[].attributes.activate) |= true`
 const setManageSnippetsQuery = `(.resources[] | select(.type == "fastly_service_dynamic_snippet_content") | .instances[].attributes.manage_snippets) |=true`
 const setManageItemsQuery = `(.resources[] | select(.type == "fastly_service_dictionary_items") | .instances[].attributes.manage_items) |=true`
 const setManageEntriesQuery = `(.resources[] | select(.type == "fastly_service_acl_entries") | .instances[].attributes.manage_entries) |=true`
+
+type TFStateWithResourceQueryTemplate struct {
+	*template.Template
+	*TFState
+}
+func (s *TFStateWithResourceQueryTemplate) Query(params ResourceQueryParams) (*TFState, error) {
+	var query bytes.Buffer
+	if err := s.Execute(&query, params); err != nil {
+		return nil, fmt.Errorf("tfstate: invalid params: %w", err)
+	}
+
+	return s.TFState.Query(query.String())
+}
 
 type TFStateWithQueryTemplate struct {
 	*template.Template
@@ -66,6 +86,15 @@ func (s *TFState) addQueryTemplate(tmpl string) (*TFStateWithQueryTemplate, erro
 	}
 
 	return &TFStateWithQueryTemplate{t, s}, nil
+}
+
+func (s *TFState) addResourceQueryTemplate(tmpl string) (*TFStateWithResourceQueryTemplate, error) {
+	t, err := template.New("template").Parse(tmpl)
+	if err != nil {
+		return nil, fmt.Errorf("tfstate: invalid template: %w", err)
+	}
+
+	return &TFStateWithResourceQueryTemplate{t, s}, nil
 }
 
 func (s TFState) Bytes() []byte {
