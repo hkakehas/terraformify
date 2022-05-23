@@ -43,9 +43,9 @@ By default, the `manage_*` attributes are not set so these resources can be mana
 
 | Resource Name                          | Attribute Name      |
 | -------------------------------------- | ------------------- |
-| fastly_service_acl_entries             | [manage_entries]()  |
-| fastly_service_dictionary_items        | [manage_items]()    |
-| fastly_service_dynamic_snippet_content | [manage_snippets]() |
+| fastly_service_acl_entries             | [manage_entries](https://registry.terraform.io/providers/fastly/fastly/latest/docs/resources/service_acl_entries)  |
+| fastly_service_dictionary_items        | [manage_items](https://registry.terraform.io/providers/fastly/fastly/latest/docs/resources/service_dictionary_items)    |
+| fastly_service_dynamic_snippet_content | [manage_snippets](https://registry.terraform.io/providers/fastly/fastly/latest/docs/resources/service_dynamic_snippet_content) |
 
 To set attributes to true and manage the resource with Terraform, use the `-m` flag.
 
