@@ -31,7 +31,7 @@ terraformify service <service-id>
 
 ### Interactive mode
 
-By default, terraformify imports all resources associated with the service, such as ACL entries, dictionary items, WAF..etc. To interactively select which resources to import, use the `-i` flag.
+By default, terraformify imports all resources associated with the service, such as ACL entries, dictionary items, WAF..etc. To interactively select which resources to import, use the `--interactive` or `-i` flag.
 
 ```
 terraformify service <service-id> -i
@@ -39,7 +39,7 @@ terraformify service <service-id> -i
 
 ### Import specific version
 
-By default, either the active version will be imported, or the latest version if no version is active. Alternatively, a specific version of the service can be selected by passing version number to the `-v` flag.
+By default, either the active version will be imported, or the latest version if no version is active. Alternatively, a specific version of the service can be selected by passing version number to the `--version` or `-v` flag.
 
 ```
 terraformify service <service-id> -v 9
@@ -55,7 +55,7 @@ By default, the `manage_*` attribute is not set so that these resources can be m
 | fastly_service_dictionary_items        | [manage_items](https://registry.terraform.io/providers/fastly/fastly/latest/docs/resources/service_dictionary_items)           |
 | fastly_service_dynamic_snippet_content | [manage_snippets](https://registry.terraform.io/providers/fastly/fastly/latest/docs/resources/service_dynamic_snippet_content) |
 
-To set the attributes to true and manage the resource with Terraform, use the `-m` flag.
+To set the attributes to true and manage the resource with Terraform, use the `--manage-all` or `-m` flag.
 
 ```
 terraformify service <service-id> -m
