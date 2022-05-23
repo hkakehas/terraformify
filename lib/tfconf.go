@@ -211,6 +211,30 @@ func rewriteVCLServiceResource(block *hclwrite.Block, serviceProp *VCLServiceRes
 					nestedBlock.SetAttributeValue(key, cty.StringVal(v.String()))
 				}
 			}
+		case "request_setting":
+			// Get name from TFConf
+			name, err := getStringAttributeValue(block, "name")
+			if err != nil {
+				return err
+			}
+
+			// Get content from TFState
+			v, err := tfstate.Query(QueryParams{
+				ResourceName:  serviceProp.GetNormalizedName(),
+				AttributeType: blockType,
+				Name:          name,
+				Query:         "xff",
+			})
+			if err != nil {
+				return err
+			}
+
+			// In the provider schema, xff is an optional attribute with a default value of "append"
+			// Because of the default value, Terraform attempts to add the default value even if the value is not set for the actual service.
+			// To workaround the issue, explicitly setting xff attribute with blank value if it's blank in the state file
+			if v.String() == "" {
+				nestedBlock.SetAttributeValue("xff", cty.StringVal(""))
+			}
 		case "response_object":
 			// Get name from TFConf
 			name, err := getStringAttributeValue(block, "name")
