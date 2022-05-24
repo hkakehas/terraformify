@@ -18,8 +18,7 @@ type Config struct {
 	Version     int
 	Directory   string
 	Interactive bool
-	ManageAll bool
-	UseForEach bool
+	ManageAll   bool
 }
 
 var Bold = color.New(color.Bold).SprintFunc()
@@ -63,7 +62,7 @@ func CheckDirEmpty(path string) error {
 }
 
 func YesNo(message string) bool {
-		reader := bufio.NewReader(os.Stdin)
+	reader := bufio.NewReader(os.Stdin)
 
 	for {
 		fmt.Printf("%s [y/n]: ", message)

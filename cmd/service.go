@@ -50,17 +50,12 @@ var serviceCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		useForEach, err := cmd.Flags().GetBool("for-each")
-		if err != nil {
-			return err
-		}
 		c := tmfy.Config{
 			ID:          args[0],
 			Version:     version,
 			Directory:   workingDir,
 			Interactive: interactive,
-			ManageAll: manageAll,
-			UseForEach: useForEach,
+			ManageAll:   manageAll,
 		}
 
 		return importService(c)
@@ -73,7 +68,6 @@ func init() {
 	// Persistent flags
 	serviceCmd.PersistentFlags().IntP("version", "v", 0, "Version of the service to be imported")
 	serviceCmd.PersistentFlags().BoolP("manage-all", "m", false, "Manage all associated resources")
-	serviceCmd.PersistentFlags().BoolP("for-each", "e", false, "Replace dictionary_id, acl_id and snippet_id with for_each (exprimental)")
 }
 
 func importService(c tmfy.Config) error {
@@ -204,24 +198,22 @@ func importService(c tmfy.Config) error {
 		}
 	}
 
-	if c.UseForEach {
-		for _, prop := range props {
-			switch r := prop.(type) {
-			case *tmfy.ACLResourceProp, *tmfy.DictionaryResourceProp, *tmfy.DynamicSnippetResourceProp:
-				log.Printf(`[INFO] Setting index keys in terraform.tfstate for %s`, r.GetRef())
-				newStateWithTmpl, err := newState.AddIndexKeyQueryTemplate(tmfy.SetIndexKeyQueryTmpl)
-				if err != nil {
-					return err
-				}
+	for _, prop := range props {
+		switch r := prop.(type) {
+		case *tmfy.ACLResourceProp, *tmfy.DictionaryResourceProp, *tmfy.DynamicSnippetResourceProp:
+			log.Printf(`[INFO] Setting index keys in terraform.tfstate for %s`, r.GetRef())
+			newStateWithTmpl, err := newState.AddIndexKeyQueryTemplate(tmfy.SetIndexKeyQueryTmpl)
+			if err != nil {
+				return err
+			}
 
-				newState, err = newStateWithTmpl.Query(tmfy.IndexKeyQueryParams{
-					ResourceType: r.GetType(),
-					ResourceName: r.GetNormalizedName(),
-					Name: r.GetName(),
-				})
-				if err != nil {
-					return err
-				}
+			newState, err = newStateWithTmpl.Query(tmfy.IndexKeyQueryParams{
+				ResourceType: r.GetType(),
+				ResourceName: r.GetNormalizedName(),
+				Name:         r.GetName(),
+			})
+			if err != nil {
+				return err
 			}
 		}
 	}

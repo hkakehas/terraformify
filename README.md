@@ -42,7 +42,7 @@ terraformify service <service-id> -i
 By default, either the active version will be imported, or the latest version if no version is active. Alternatively, a specific version of the service can be selected by passing version number to the `--version` or `-v` flag.
 
 ```
-terraformify service <service-id> -v 9
+terraformify service <service-id> -v <version-number>
 ```
 
 ### Manage associated resources

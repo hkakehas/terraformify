@@ -12,6 +12,18 @@ import (
 	"github.com/itchyny/gojq"
 )
 
+// query for gojq
+const setActivateQuery = `(.resources[] | select(.type == "fastly_service_vcl" or .type == "fastly_service_waf_configuration") | .instances[].attributes.activate) |= true`
+const setManageSnippetsQuery = `(.resources[] | select(.type == "fastly_service_dynamic_snippet_content") | .instances[].attributes.manage_snippets) |=true`
+const setManageItemsQuery = `(.resources[] | select(.type == "fastly_service_dictionary_items") | .instances[].attributes.manage_items) |=true`
+const setManageEntriesQuery = `(.resources[] | select(.type == "fastly_service_acl_entries") | .instances[].attributes.manage_entries) |=true`
+
+// query templates for gojq
+const serviceQueryTmpl = `.resources[] | select(.name == "{{.ResourceName}}") | .instances[].attributes.{{.AttributeType}}[] | select(.name == "{{.Name}}") | .{{.Query}}`
+const dsnippetQueryTmpl = `.resources[] | select(.name == "{{.ResourceName}}") | .instances[].attributes.content`
+const resourceNameQueryTmpl = `.resources[] | select(.type == "fastly_service_vcl") | .instances[].attributes.{{.AttributeType}}[] | select(.{{.IDName}} == "{{.ID}}") | .name`
+const SetIndexKeyQueryTmpl = `(.resources[] | select(.type == "{{.ResourceType}}") | select(.name == "{{.ResourceName}}") | .instances[]) += {index_key: "{{.Name}}"}`
+
 type QueryParams struct {
 	ResourceName  string
 	AttributeType string
@@ -19,56 +31,35 @@ type QueryParams struct {
 	Query         string
 }
 
-type ResourceQueryParams struct {
+type ResourceNameQueryParams struct {
 	AttributeType string
-	IDName string
-	ID string
+	IDName        string
+	ID            string
 }
 
 type IndexKeyQueryParams struct {
 	ResourceType string
 	ResourceName string
-	Name string
+	Name         string
 }
 
-// queries/query templates for gojq
-const serviceQueryTmpl =   `.resources[] | select(.name == "{{.ResourceName}}") | .instances[].attributes.{{.AttributeType}}[] | select(.name == "{{.Name}}") | .{{.Query}}`
-const dsnippetQueryTmpl = `.resources[] | select(.name == "{{.ResourceName}}") | .instances[].attributes.content`
-const resourceNameQueryTmpl = `.resources[] | select(.type == "fastly_service_vcl") | .instances[].attributes.{{.AttributeType}}[] | select(.{{.IDName}} == "{{.ID}}") | .name`
-const setActivateQuery =   `(.resources[] | select(.type == "fastly_service_vcl" or .type == "fastly_service_waf_configuration") | .instances[].attributes.activate) |= true`
-const setManageSnippetsQuery = `(.resources[] | select(.type == "fastly_service_dynamic_snippet_content") | .instances[].attributes.manage_snippets) |=true`
-const setManageItemsQuery = `(.resources[] | select(.type == "fastly_service_dictionary_items") | .instances[].attributes.manage_items) |=true`
-const setManageEntriesQuery = `(.resources[] | select(.type == "fastly_service_acl_entries") | .instances[].attributes.manage_entries) |=true`
-const SetIndexKeyQueryTmpl = `(.resources[] | select(.type == "{{.ResourceType}}") | select(.name == "{{.ResourceName}}") | .instances[]) += {index_key: "{{.Name}}"}`
-
-type TFStateWithResourceQueryTemplate struct {
-	*template.Template
-	*TFState
-}
-func (s *TFStateWithResourceQueryTemplate) Query(params ResourceQueryParams) (*TFState, error) {
-	var query bytes.Buffer
-	if err := s.Execute(&query, params); err != nil {
-		return nil, fmt.Errorf("tfstate: invalid params: %w", err)
-	}
-
-	return s.TFState.Query(query.String())
+type TFState struct {
+	Value interface{}
 }
 
 type TFStateWithQueryTemplate struct {
 	*template.Template
 	*TFState
 }
-func (s *TFStateWithQueryTemplate) Query(params QueryParams) (*TFState, error) {
-	var query bytes.Buffer
-	if err := s.Execute(&query, params); err != nil {
-		return nil, fmt.Errorf("tfstate: invalid params: %w", err)
-	}
 
-	return s.TFState.Query(query.String())
+type TFStateWithResourceQueryTemplate struct {
+	*template.Template
+	*TFState
 }
 
-type TFState struct {
-	Value     interface{}
+type TFStateWithIndexKeyQueryTemplate struct {
+	*template.Template
+	*TFState
 }
 
 func LoadTFState(workingDir string) (*TFState, error) {
@@ -105,10 +96,6 @@ func (s *TFState) addResourceQueryTemplate(tmpl string) (*TFStateWithResourceQue
 	return &TFStateWithResourceQueryTemplate{t, s}, nil
 }
 
-type TFStateWithIndexKeyQueryTemplate struct {
-	*template.Template
-	*TFState
-}
 func (s *TFState) AddIndexKeyQueryTemplate(tmpl string) (*TFStateWithIndexKeyQueryTemplate, error) {
 	t, err := template.New("template").Parse(tmpl)
 	if err != nil {
@@ -116,15 +103,6 @@ func (s *TFState) AddIndexKeyQueryTemplate(tmpl string) (*TFStateWithIndexKeyQue
 	}
 
 	return &TFStateWithIndexKeyQueryTemplate{t, s}, nil
-}
-
-func (s *TFStateWithIndexKeyQueryTemplate) Query(params IndexKeyQueryParams) (*TFState, error) {
-	var query bytes.Buffer
-	if err := s.Execute(&query, params); err != nil {
-		return nil, fmt.Errorf("tfstate: invalid params: %w", err)
-	}
-
-	return s.TFState.Query(query.String())
 }
 
 func (s TFState) Bytes() []byte {
@@ -160,18 +138,45 @@ func (s *TFState) Query(query string) (*TFState, error) {
 	return nil, fmt.Errorf("tfstate: %s is not found in the state", query)
 }
 
+func (s *TFStateWithQueryTemplate) Query(params QueryParams) (*TFState, error) {
+	var query bytes.Buffer
+	if err := s.Execute(&query, params); err != nil {
+		return nil, fmt.Errorf("tfstate: invalid params: %w", err)
+	}
+
+	return s.TFState.Query(query.String())
+}
+
+func (s *TFStateWithResourceQueryTemplate) Query(params ResourceNameQueryParams) (*TFState, error) {
+	var query bytes.Buffer
+	if err := s.Execute(&query, params); err != nil {
+		return nil, fmt.Errorf("tfstate: invalid params: %w", err)
+	}
+
+	return s.TFState.Query(query.String())
+}
+
+func (s *TFStateWithIndexKeyQueryTemplate) Query(params IndexKeyQueryParams) (*TFState, error) {
+	var query bytes.Buffer
+	if err := s.Execute(&query, params); err != nil {
+		return nil, fmt.Errorf("tfstate: invalid params: %w", err)
+	}
+
+	return s.TFState.Query(query.String())
+}
+
 func (s *TFState) SetActivateAttr() (*TFState, error) {
-	q :=  setActivateQuery
+	q := setActivateQuery
 	return s.Query(q)
 }
 
 func (s *TFState) SetManageSnippetsAttr() (*TFState, error) {
-	q :=  setManageSnippetsQuery
+	q := setManageSnippetsQuery
 	return s.Query(q)
 }
 
 func (s *TFState) SetManageItemsAttr() (*TFState, error) {
-	q :=  setManageItemsQuery
+	q := setManageItemsQuery
 	return s.Query(q)
 }
 

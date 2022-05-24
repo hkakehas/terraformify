@@ -413,48 +413,13 @@ func rewriteVCLServiceResource(block *hclwrite.Block, serviceProp *VCLServiceRes
 }
 
 func rewriteACLResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
-	body := block.Body()
-
-	if c.UseForEach {
-		id, err := getStringAttributeValue(block, "acl_id")
-		if err != nil {
-			return err
-		}
-
-		tfstate, err := s.addResourceQueryTemplate(resourceNameQueryTmpl)
-		if err != nil {
-			return err
-		}
-
-		name, err := tfstate.Query(ResourceQueryParams{
-			AttributeType: "acl",
-			IDName:        "acl_id",
-			ID:            id,
-		})
-		if err != nil {
-			return err
-		}
-
-		tokens := buildForEach("acl", name.String())
-		body.SetAttributeRaw("for_each", tokens)
-
-		resourceIDRef := buildForEachIDRef("acl_id")
-		body.SetAttributeTraversal("acl_id", resourceIDRef)
+	err := rewriteCommonAttributes(block, serviceProp, s, c)
+	if err != nil {
+		return err
 	}
-
-	// remove read-only attributes
-	body.RemoveAttribute("id")
-
-	if c.ManageAll {
-		// set manage_entries to true
-		body.SetAttributeValue("manage_entries", cty.BoolVal(true))
-	}
-
-	// set service_id to represent the resource dependency
-	ref := buildServiceIDRef(serviceProp)
-	body.SetAttributeTraversal("service_id", ref)
 
 	// remove read-only attributes from each ACL entry
+	body := block.Body()
 	for _, block := range body.Blocks() {
 		t := block.Type()
 		nb := block.Body()
@@ -468,34 +433,86 @@ func rewriteACLResource(block *hclwrite.Block, serviceProp *VCLServiceResourcePr
 }
 
 func rewriteDictionaryResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
+	return rewriteCommonAttributes(block, serviceProp, s, c)
+}
+
+func rewriteDynamicSnippetResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
+	err := rewriteCommonAttributes(block, serviceProp, s, c)
+	if err != nil {
+		return err
+	}
+
+	// replace content value with file()
+	name := block.Labels()[1]
+
+	// Get content from the state file
+	tfstate, err := s.addQueryTemplate(dsnippetQueryTmpl)
+	if err != nil {
+		return err
+	}
+	v, err := tfstate.Query(QueryParams{
+		ResourceName: name,
+	})
+	if err != nil {
+		return err
+	}
+
+	// Save content to a file
+	filename := fmt.Sprintf("dsnippet_%s.vcl", normalize(name))
+	if err = saveVCL(c.Directory, filename, v.Bytes()); err != nil {
+		return err
+	}
+
+	// Replace content attribute with file function expression
+	body := block.Body()
+	path := fmt.Sprintf("./vcl/%s", filename)
+	tokens := buildFileFunction(path)
+	body.SetAttributeRaw("content", tokens)
+
+	return nil
+}
+
+func rewriteCommonAttributes(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
+	var idName, attrType string
+	switch block.Labels()[0] {
+	case "fastly_service_dynamic_snippet_content":
+		idName = "snippet_id"
+		attrType = "dynamicsnippet"
+	case "fastly_service_dictionary_items":
+		idName = "dictionary_id"
+		attrType = "dictionary"
+	case "fastly_service_acl_entries":
+		idName = "acl_id"
+		attrType = "acl"
+	}
+
+	// Getting the name of the resource from the state file
+	id, err := getStringAttributeValue(block, idName)
+	if err != nil {
+		return err
+	}
+	tfstate, err := s.addResourceQueryTemplate(resourceNameQueryTmpl)
+	if err != nil {
+		return err
+	}
+	name, err := tfstate.Query(ResourceNameQueryParams{
+		AttributeType: attrType,
+		IDName:        idName,
+		ID:            id,
+	})
+	if err != nil {
+		return err
+	}
+
 	body := block.Body()
 
-	if c.UseForEach {
-		id, err := getStringAttributeValue(block, "dictionary_id")
-		if err != nil {
-			return err
-		}
+	// Add for_each to the resource block
+	tokens := buildForEach(attrType, name.String())
+	body.SetAttributeRaw("for_each", tokens)
 
-		tfstate, err := s.addResourceQueryTemplate(resourceNameQueryTmpl)
-		if err != nil {
-			return err
-		}
-
-		name, err := tfstate.Query(ResourceQueryParams{
-			AttributeType: "dictionary",
-			IDName:        "dictionary_id",
-			ID:            id,
-		})
-		if err != nil {
-			return err
-		}
-
-		tokens := buildForEach("dictionary", name.String())
-		body.SetAttributeRaw("for_each", tokens)
-
-		resourceIDRef := buildForEachIDRef("dictionary_id")
-		body.SetAttributeTraversal("dictionary_id", resourceIDRef)
-	}
+	// Setting the resource ID (acl_id, dictionary_id, snippet_id)
+	resourceIDRef := buildForEachIDRef(idName)
+	body.SetAttributeTraversal(idName, resourceIDRef)
 
 	// remove read-only attributes
 	body.RemoveAttribute("id")
@@ -528,78 +545,6 @@ func rewriteWAFResource(block *hclwrite.Block, serviceProp *VCLServiceResourcePr
 		hcl.TraverseIndex{Key: cty.NumberUIntVal(0)},
 		hcl.TraverseAttr{Name: "waf_id"},
 	})
-
-	return nil
-}
-
-func rewriteDynamicSnippetResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
-	body := block.Body()
-
-	if c.UseForEach {
-		id, err := getStringAttributeValue(block, "snippet_id")
-		if err != nil {
-			return err
-		}
-
-		tfstate, err := s.addResourceQueryTemplate(resourceNameQueryTmpl)
-		if err != nil {
-			return err
-		}
-
-		name, err := tfstate.Query(ResourceQueryParams{
-			AttributeType: "dynamicsnippet",
-			IDName:        "snippet_id",
-			ID:            id,
-		})
-		if err != nil {
-			return err
-		}
-
-		tokens := buildForEach("dynamicsnippet", name.String())
-		body.SetAttributeRaw("for_each", tokens)
-
-		resourceIDRef := buildForEachIDRef("snippet_id")
-		body.SetAttributeTraversal("snippet_id", resourceIDRef)
-	}
-
-	// remove read-only attributes
-	body.RemoveAttribute("id")
-
-	if c.ManageAll {
-		// set manage_snippets to true
-		body.SetAttributeValue("manage_snippets", cty.BoolVal(true))
-	}
-
-	// set service_id to represent the resource dependency
-	ref := buildServiceIDRef(serviceProp)
-	body.SetAttributeTraversal("service_id", ref)
-
-	// replace content value with file()
-	name := block.Labels()[1]
-
-	// Get content from TFState
-	tfstate, err := s.addQueryTemplate(dsnippetQueryTmpl)
-	if err != nil {
-		return err
-	}
-
-	v, err := tfstate.Query(QueryParams{
-		ResourceName: name,
-	})
-	if err != nil {
-		return err
-	}
-
-	// Save content to a file
-	filename := fmt.Sprintf("dsnippet_%s.vcl", normalize(name))
-	if err = saveVCL(c.Directory, filename, v.Bytes()); err != nil {
-		return err
-	}
-
-	// Replace content attribute with file function expression
-	path := fmt.Sprintf("./vcl/%s", filename)
-	tokens := buildFileFunction(path)
-	body.SetAttributeRaw("content", tokens)
 
 	return nil
 }
@@ -646,19 +591,19 @@ func buildForEach(resourceType, name string) hclwrite.Tokens {
 	}
 }
 
-func buildServiceIDRef(serviceProp *VCLServiceResourceProp) hcl.Traversal {
-	return hcl.Traversal{
-		hcl.TraverseRoot{Name: serviceProp.GetType()},
-		hcl.TraverseAttr{Name: serviceProp.GetNormalizedName()},
-		hcl.TraverseAttr{Name: "id"},
-	}
-}
-
 func buildForEachIDRef(idName string) hcl.Traversal {
 	return hcl.Traversal{
 		hcl.TraverseRoot{Name: "each"},
 		hcl.TraverseAttr{Name: "value"},
 		hcl.TraverseAttr{Name: idName},
+	}
+}
+
+func buildServiceIDRef(serviceProp *VCLServiceResourceProp) hcl.Traversal {
+	return hcl.Traversal{
+		hcl.TraverseRoot{Name: serviceProp.GetType()},
+		hcl.TraverseAttr{Name: serviceProp.GetNormalizedName()},
+		hcl.TraverseAttr{Name: "id"},
 	}
 }
 
