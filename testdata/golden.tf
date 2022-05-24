@@ -1,6 +1,6 @@
 # fastly_service_acl_entries.allow_list:
 resource "fastly_service_acl_entries" "allow_list" {
-  acl_id     = "2sxfcuthdK7cDb9cq3bWOa"
+  acl_id     = each.value.acl_id
   service_id = fastly_service_vcl.service.id
 
   entry {
@@ -15,11 +15,14 @@ resource "fastly_service_acl_entries" "allow_list" {
     negated = false
     subnet  = "24"
   }
+  for_each = {
+    for d in fastly_service_vcl.service.acl : d.name => d if d.name == "allow_list"
+  }
 }
 
 # fastly_service_acl_entries.generated_by_ip_block_list:
 resource "fastly_service_acl_entries" "generated_by_ip_block_list" {
-  acl_id     = "3vU7U4UgT3MqpnXU6EOwHN"
+  acl_id     = each.value.acl_id
   service_id = fastly_service_vcl.service.id
 
   entry {
@@ -30,41 +33,56 @@ resource "fastly_service_acl_entries" "generated_by_ip_block_list" {
     ip      = "192.168.4.0"
     negated = false
   }
+  for_each = {
+    for d in fastly_service_vcl.service.acl : d.name => d if d.name == "Generated_by_IP_block_list"
+  }
 }
 
 # fastly_service_dictionary_items.config_table:
 resource "fastly_service_dictionary_items" "config_table" {
-  dictionary_id = "0P1IdeUyhNxaYAZ0fwUkp1"
+  dictionary_id = each.value.dictionary_id
   items = {
     "maintenance" = "true"
     "otherconfig" = "false"
   }
   service_id = fastly_service_vcl.service.id
+  for_each = {
+    for d in fastly_service_vcl.service.dictionary : d.name => d if d.name == "config_table"
+  }
 }
 
 # fastly_service_dictionary_items.redirect_table:
 resource "fastly_service_dictionary_items" "redirect_table" {
-  dictionary_id = "1FdjfscwPS3Vydj41q4zXE"
+  dictionary_id = each.value.dictionary_id
   items = {
     "/bar" = "/image"
     "/baz" = "/image"
     "/foo" = "/image"
   }
   service_id = fastly_service_vcl.service.id
+  for_each = {
+    for d in fastly_service_vcl.service.dictionary : d.name => d if d.name == "redirect_table"
+  }
 }
 
 # fastly_service_dynamic_snippet_content.my_dynamic_snippet_one:
 resource "fastly_service_dynamic_snippet_content" "my_dynamic_snippet_one" {
   content    = file("./vcl/dsnippet_my_dynamic_snippet_one.vcl")
   service_id = fastly_service_vcl.service.id
-  snippet_id = "5cid7sn84z3EDFuFS6UQNn"
+  snippet_id = each.value.snippet_id
+  for_each = {
+    for d in fastly_service_vcl.service.dynamicsnippet : d.name => d if d.name == "My Dynamic Snippet One"
+  }
 }
 
 # fastly_service_dynamic_snippet_content.my_dynamic_snippet_two:
 resource "fastly_service_dynamic_snippet_content" "my_dynamic_snippet_two" {
   content    = file("./vcl/dsnippet_my_dynamic_snippet_two.vcl")
   service_id = fastly_service_vcl.service.id
-  snippet_id = "4U9GYE30Rk2jc5eL782QLh"
+  snippet_id = each.value.snippet_id
+  for_each = {
+    for d in fastly_service_vcl.service.dynamicsnippet : d.name => d if d.name == "My Dynamic Snippet Two"
+  }
 }
 
 # fastly_service_vcl.service:

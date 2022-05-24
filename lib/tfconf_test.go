@@ -7,34 +7,34 @@ import (
 )
 
 const (
-	inputFile = "../testdata/rawHCL.tf"
+	inputFile  = "../testdata/rawHCL.tf"
 	goldenFile = "../testdata/golden.tf"
 )
 
 func TestRewriteResources(t *testing.T) {
-	testCases := []struct{
-		serviceID string
-		version int
+	testCases := []struct {
+		serviceID  string
+		version    int
 		workingDir string
-		
+
 		manageAll bool
 	}{
 		{
-			serviceID: "6gjZ23Y0k6TApEs5PxzYuT",
-			version: 0,
+			serviceID:  "6gjZ23Y0k6TApEs5PxzYuT",
+			version:    0,
 			workingDir: "../testdata",
-			manageAll: false,
+			manageAll:  false,
 		},
 	}
 
 	for _, tt := range testCases {
 		serviceProp := NewVCLServiceResourceProp(tt.serviceID, "service", tt.version)
 		config := Config{
-			ID: tt.serviceID,
-			Version: tt.version,
-			Directory: tt.workingDir,
+			ID:          tt.serviceID,
+			Version:     tt.version,
+			Directory:   tt.workingDir,
 			Interactive: false,
-			ManageAll: tt.manageAll,
+			ManageAll:   tt.manageAll,
 		}
 
 		expected, err := os.ReadFile(goldenFile)
@@ -46,7 +46,6 @@ func TestRewriteResources(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
 
 		tfconf, err := LoadTFConf(string(b))
 		if err != nil {

@@ -50,13 +50,12 @@ var serviceCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
 		c := tmfy.Config{
 			ID:          args[0],
 			Version:     version,
 			Directory:   workingDir,
 			Interactive: interactive,
-			ManageAll: manageAll,
+			ManageAll:   manageAll,
 		}
 
 		return importService(c)
@@ -196,6 +195,26 @@ func importService(c tmfy.Config) error {
 		newState, err = newState.SetManageAttrs()
 		if err != nil {
 			return err
+		}
+	}
+
+	for _, prop := range props {
+		switch r := prop.(type) {
+		case *tmfy.ACLResourceProp, *tmfy.DictionaryResourceProp, *tmfy.DynamicSnippetResourceProp:
+			log.Printf(`[INFO] Setting index keys in terraform.tfstate for %s`, r.GetRef())
+			newStateWithTmpl, err := newState.AddIndexKeyQueryTemplate(tmfy.SetIndexKeyQueryTmpl)
+			if err != nil {
+				return err
+			}
+
+			newState, err = newStateWithTmpl.Query(tmfy.IndexKeyQueryParams{
+				ResourceType: r.GetType(),
+				ResourceName: r.GetNormalizedName(),
+				Name:         r.GetName(),
+			})
+			if err != nil {
+				return err
+			}
 		}
 	}
 
