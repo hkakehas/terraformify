@@ -10,6 +10,7 @@ type TFBlockProp interface {
 	GetType() string
 	GetID() string
 	GetIDforTFImport() string
+	GetName() string
 	GetNormalizedName() string
 	GetRef() string
 }

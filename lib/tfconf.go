@@ -415,7 +415,7 @@ func rewriteVCLServiceResource(block *hclwrite.Block, serviceProp *VCLServiceRes
 func rewriteACLResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
 	body := block.Body()
 
-	if c.ReplaceID {
+	if c.UseForEach {
 		id, err := getStringAttributeValue(block, "acl_id")
 		if err != nil {
 			return err
@@ -470,7 +470,7 @@ func rewriteACLResource(block *hclwrite.Block, serviceProp *VCLServiceResourcePr
 func rewriteDictionaryResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
 	body := block.Body()
 
-	if c.ReplaceID {
+	if c.UseForEach {
 		id, err := getStringAttributeValue(block, "dictionary_id")
 		if err != nil {
 			return err
@@ -535,7 +535,7 @@ func rewriteWAFResource(block *hclwrite.Block, serviceProp *VCLServiceResourcePr
 func rewriteDynamicSnippetResource(block *hclwrite.Block, serviceProp *VCLServiceResourceProp, s *TFState, c Config) error {
 	body := block.Body()
 
-	if c.ReplaceID {
+	if c.UseForEach {
 		id, err := getStringAttributeValue(block, "snippet_id")
 		if err != nil {
 			return err

@@ -25,6 +25,13 @@ type ResourceQueryParams struct {
 	ID string
 }
 
+type IndexKeyQueryParams struct {
+	ResourceType string
+	ResourceName string
+	Name string
+}
+
+// queries/query templates for gojq
 const serviceQueryTmpl =   `.resources[] | select(.name == "{{.ResourceName}}") | .instances[].attributes.{{.AttributeType}}[] | select(.name == "{{.Name}}") | .{{.Query}}`
 const dsnippetQueryTmpl = `.resources[] | select(.name == "{{.ResourceName}}") | .instances[].attributes.content`
 const resourceNameQueryTmpl = `.resources[] | select(.type == "fastly_service_vcl") | .instances[].attributes.{{.AttributeType}}[] | select(.{{.IDName}} == "{{.ID}}") | .name`
@@ -32,6 +39,7 @@ const setActivateQuery =   `(.resources[] | select(.type == "fastly_service_vcl"
 const setManageSnippetsQuery = `(.resources[] | select(.type == "fastly_service_dynamic_snippet_content") | .instances[].attributes.manage_snippets) |=true`
 const setManageItemsQuery = `(.resources[] | select(.type == "fastly_service_dictionary_items") | .instances[].attributes.manage_items) |=true`
 const setManageEntriesQuery = `(.resources[] | select(.type == "fastly_service_acl_entries") | .instances[].attributes.manage_entries) |=true`
+const SetIndexKeyQueryTmpl = `(.resources[] | select(.type == "{{.ResourceType}}") | select(.name == "{{.ResourceName}}") | .instances[]) += {index_key: "{{.Name}}"}`
 
 type TFStateWithResourceQueryTemplate struct {
 	*template.Template
@@ -95,6 +103,28 @@ func (s *TFState) addResourceQueryTemplate(tmpl string) (*TFStateWithResourceQue
 	}
 
 	return &TFStateWithResourceQueryTemplate{t, s}, nil
+}
+
+type TFStateWithIndexKeyQueryTemplate struct {
+	*template.Template
+	*TFState
+}
+func (s *TFState) AddIndexKeyQueryTemplate(tmpl string) (*TFStateWithIndexKeyQueryTemplate, error) {
+	t, err := template.New("template").Parse(tmpl)
+	if err != nil {
+		return nil, fmt.Errorf("tfstate: invalid template: %w", err)
+	}
+
+	return &TFStateWithIndexKeyQueryTemplate{t, s}, nil
+}
+
+func (s *TFStateWithIndexKeyQueryTemplate) Query(params IndexKeyQueryParams) (*TFState, error) {
+	var query bytes.Buffer
+	if err := s.Execute(&query, params); err != nil {
+		return nil, fmt.Errorf("tfstate: invalid params: %w", err)
+	}
+
+	return s.TFState.Query(query.String())
 }
 
 func (s TFState) Bytes() []byte {
