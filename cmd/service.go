@@ -104,8 +104,8 @@ func importService(c tmfy.Config) error {
 	serviceProp := tmfy.NewVCLServiceResourceProp(c.ID, "service", c.Version)
 
 	// log.Printf(`[INFO] Running "terraform import %s %s"`, serviceProp.GetRef(), serviceProp.GetIDforTFImport())
-	log.Printf(`[INFO] Running "terraform imoprt" on %s`, serviceProp.GetRef())
-	tmfy.TerraformImport(tf, serviceProp, tempf)
+	log.Printf(`[INFO] Running "terraform import" on %s`, serviceProp.GetRef())
+	err = tmfy.TerraformImport(tf, serviceProp, tempf)
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func importService(c tmfy.Config) error {
 			}
 
 			// log.Printf(`[INFO] Running "terraform import %s %s"`, r.GetRef(), r.GetIDforTFImport())
-			log.Printf(`[INFO] Running "terraform imoprt" on %s`, r.GetRef())
+			log.Printf(`[INFO] Running "terraform import" on %s`, r.GetRef())
 			tmfy.TerraformImport(tf, prop, tempf)
 			if err != nil {
 				return err
