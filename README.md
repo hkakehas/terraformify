@@ -60,3 +60,7 @@ To set the attributes to true and manage the resource with Terraform, use the `-
 ```
 terraformify service <service-id> -m
 ```
+
+## License
+
+MIT License
